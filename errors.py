@@ -4,3 +4,7 @@ class VoiceClientDisconnectedError(Exception):
 
 class AudioSourceNotFoundError(Exception):
     pass
+
+
+class AudioExtensionError(AudioSourceNotFoundError):
+    pass

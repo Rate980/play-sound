@@ -1,19 +1,21 @@
 import logging
 import typing
 from dataclasses import dataclass, field
+from mimetypes import init
 from pathlib import Path
 
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from player import Player
-from song import OnlineSong
+from song import OnlineSong, YoutubeSong
 
 
-@dataclass
+# @dataclass
 class PlaySound(commands.Cog):
-    bot: commands.Bot
-    players: dict[int, Player] = field(default_factory=dict, init=False)
+    def __init__(self, bot: commands.Bot):
+        self.bot: commands.Bot = bot
+        self.players: dict[int, Player] = dict()
 
     @commands.hybrid_command()
     @commands.guild_only()
@@ -27,7 +29,7 @@ class PlaySound(commands.Cog):
 
             player = Player(await voice.channel.connect(), self.bot.loop)
 
-        await player.add(OnlineSong(url))
+        await player.add(YoutubeSong(url))
         self.players[guild.id] = player
 
     @commands.hybrid_command()
@@ -48,6 +50,20 @@ class PlaySound(commands.Cog):
 
         self.players[guild.id] = Player(await channel.connect(), self.bot.loop)
 
+    @commands.hybrid_command()
+    @commands.guild_only()
+    async def disconnect(self, ctx: commands.Context):
+        guild = typing.cast(discord.Guild, ctx.guild)
+        if (player := self.players.get(guild.id)) is None or player.disconnected:
+            await ctx.send("おらんで")
+            return
+
+        await player.disconnect()
+
+    @tasks.loop(hours=1)
+    async def delete_disconnected(self):
+        self.players = {k: v for k, v in self.players.items() if not v.disconnected}
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(PlaySound(bot))
@@ -60,6 +76,7 @@ if __name__ == "__main__":
     prefix = file.parent
 
     token = os.environ["DIS_TEST_TOKEN"]
+    token = "OTc0NjE1NDQ1MjI5NDA0MjEw.GAXKVx.PnDLESyvs6vfFmXUecol4W6s8yHGwUTljbTX6w"
 
     intents = discord.Intents.all()
 

@@ -1,3 +1,4 @@
 discord.py[voice, speed] ~= 2.1.0
 aiofiles
 python-magic-bin
+youtube-dl
