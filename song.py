@@ -4,9 +4,7 @@ import os
 import uuid
 from asyncio import subprocess
 from collections.abc import Coroutine
-from encodings import utf_8
 from pathlib import Path
-from sys import stdout
 from typing import Any, Tuple, cast
 
 import aiofiles
