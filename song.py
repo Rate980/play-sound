@@ -11,7 +11,6 @@ import aiofiles
 import aiohttp
 import discord
 import magic
-import youtube_dl
 
 from errors import AudioExtensionError, AudioSourceNotFoundError
 
@@ -103,13 +102,33 @@ class DiscordMessageSong(Song):
         super().__init__(task=task())
 
 
+class DiscordMessageLinkSong(Song):
+    def __init__(self, url: str, client: discord.Client):
+        async def task():
+            channel_id, message_id = (int(x) for x in url.split("/")[-2::])
+            if channel := client.get_channel(channel_id) is None:
+                channel = await client.fetch_channel(channel_id)
+
+            if not isinstance(channel, discord.abc.Messageable):
+                raise AudioSourceNotFoundError
+
+            message = await channel.fetch_message(message_id)
+            super_ = DiscordMessageSong(message)
+            if super_.task is None:
+                raise AudioSourceNotFoundError
+            return await super_.task
+
+        self.task = asyncio.create_task(task())
+
+
 class YoutubeSong(Song):
     def __init__(self, url: str):
         async def task():
             name = tempdir.touch("")
             cmd = self.make_cmd(name)
-            print(cmd)
+            # print(cmd)
             cmd_dl = [*cmd, url]
+            # print(cmd_dl)
             cmd_get_name = [*cmd, "--get-filename", url]
             dl = asyncio.create_task(
                 asyncio.create_subprocess_exec(
@@ -121,15 +140,17 @@ class YoutubeSong(Song):
                     *cmd_get_name, stdout=subprocess.PIPE, stderr=subprocess.PIPE
                 )
             )
-            # res: list[subprocess.Process] = await asyncio.gather(*tasks)
+            # dl, name = await asyncio.gather(dl, get_name)
+            await dl
+            name = await get_name
+            file_name, _ = await name.communicate()
+            # def con(x: Tuple[bytes, bytes]):
+            #     a, b = x
+            #     return a.decode("utf8"), b.decode("utf_8")
 
-            def con(x: Tuple[bytes, bytes]):
-                a, b = x
-                return a.decode("utf8"), b.decode("utf_8")
-
-            res = [
-                con(await x.communicate()) for x in await asyncio.gather(dl, get_name)
-            ]
+            # res = [
+            #     con(await x.communicate()) for x in await asyncio.gather(dl, get_name)
+            # ]
             # print(res)
 
             # return res[1][0]
@@ -139,7 +160,7 @@ class YoutubeSong(Song):
             #     stderr,
             # ) = await res.communicate()
             # print(stdout, stderr)
-            return res[1][0].strip()
+            return file_name.decode("ascii")
 
         super().__init__(task=task())
 
@@ -151,9 +172,7 @@ class YoutubeSong(Song):
 if __name__ == "__main__":
 
     async def main():
-        a = YoutubeSong("https://www.youtube.com/watch?v=ZVSSBUvm62o")
-        if a.task == None:
-            return
+        a = YoutubeSong("https://soundcloud.com/djgdnkk/tintin")
         s = await a.get_source()
         print(s)
 
