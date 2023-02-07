@@ -1,0 +1,33 @@
+!bassboost - bass, bb
+!clear - cl
+!debug - shard
+!disconnect - dc, leave, dis, fuckoff
+!donate - patreon
+!effects - effect
+!forceskip - fskip, fs
+!forward - fwd
+!invite - links
+!join - summon, fuckon
+!leavecleanup - lc
+!loop - repeat
+!qloop - loopqueue, lq, queueloop
+!lyrics - l, ly
+!move - m, mv
+!nowplaying - np
+!pause - stop
+!play - p
+!playskip - ps, pskip, playnow, pn
+!playtop - pt, ptop
+!prune - clean
+!queue - q
+!remove - rm
+!removedupes - rmd, rd, drm
+!resume - re, res, continue
+!rewind - rwd
+!search - find
+!shuffle - random
+!skipto - st
+!slowed - sad
+!soundcloud - sc
+!volume - vol
+!voteskip - skip, next, s
