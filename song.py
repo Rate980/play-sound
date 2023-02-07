@@ -2,10 +2,11 @@ import asyncio
 import mimetypes
 import os
 import uuid
+from abc import ABCMeta, abstractmethod
 from asyncio import subprocess
-from collections.abc import Coroutine
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Tuple, cast
+from typing import cast, final
 
 import aiofiles
 import aiohttp
@@ -32,23 +33,18 @@ class TempDir:
 tempdir = TempDir()
 
 
-class Song:
-    def __init__(
-        self,
-        *,
-        task: Coroutine[Any, Any, str] | None = None,
-        filename: str | None = None,
-    ):
-        self.task = asyncio.create_task(task) if task is not None else None
-        self.filename = filename
-        if self.task is None and self.filename is None:
-            raise AudioSourceNotFoundError
+class Song(metaclass=ABCMeta):
+    def __init__(self):
+        self.__post_init__()
+
+    @final
+    def __post_init__(self):
+        self.task = self.create_task()
+        self.filename: str | None = None
 
     async def get_source(self):
         # self.filename = name = await self.task
         if self.filename is None:
-            if self.task is None:
-                raise AudioSourceNotFoundError
             self.filename = await self.task
 
         return discord.FFmpegPCMAudio(self.filename)
@@ -59,12 +55,19 @@ class Song:
 
         os.remove(self.filename)
 
+    @abstractmethod
+    def create_task(self) -> asyncio.Task[str]:
+        raise NotImplementedError
 
+
+@dataclass
 class OnlineSong(Song):
-    def __init__(self, url: str) -> None:
+    url: str
+
+    def create_task(self):
         async def task():
             async with aiohttp.ClientSession() as session:
-                async with session.get(url) as res:
+                async with session.get(self.url) as res:
                     mime = res.headers.get("content-type")
                     data = await res.read()
                     if mime is None:
@@ -79,16 +82,19 @@ class OnlineSong(Song):
 
             return str(file)
 
-        super().__init__(task=task())
+        return asyncio.create_task(task())
 
 
+@dataclass
 class DiscordMessageSong(Song):
-    def __init__(self, mes: discord.Message):
+    mes: discord.Message
+
+    def create_task(self):
         async def task():
-            if not mes.attachments:
+            if not self.mes.attachments:
                 raise AudioSourceNotFoundError
 
-            att = mes.attachments[0]
+            att = self.mes.attachments[0]
             _, dot, ext = att.filename.partition(".")
             extension = dot + ext or mimetypes.guess_extension(
                 att.content_type if att.content_type is not None else ""
@@ -99,37 +105,42 @@ class DiscordMessageSong(Song):
             await att.save(name := tempdir.touch(extension))
             return str(name)
 
-        super().__init__(task=task())
+        return asyncio.create_task(task())
 
 
-class DiscordMessageLinkSong(Song):
-    def __init__(self, url: str, client: discord.Client):
+@dataclass
+class DiscordMessageLinkSong(DiscordMessageSong):
+    url: str
+    client: discord.Client
+    mes: discord.Message | None = field(default=None, init=False)
+
+    def create_task(self):
         async def task():
-            channel_id, message_id = (int(x) for x in url.split("/")[-2::])
-            if channel := client.get_channel(channel_id) is None:
-                channel = await client.fetch_channel(channel_id)
+            channel_id, message_id = (int(x) for x in self.url.split("/")[-2::])
+            if (channel := self.client.get_channel(channel_id)) is None:
+                channel = await self.client.fetch_channel(channel_id)
 
             if not isinstance(channel, discord.abc.Messageable):
                 raise AudioSourceNotFoundError
 
-            message = await channel.fetch_message(message_id)
-            super_ = DiscordMessageSong(message)
-            if super_.task is None:
-                raise AudioSourceNotFoundError
-            return await super_.task
+            self.mes = await channel.fetch_message(message_id)
+            return await super().create_task()
 
-        self.task = asyncio.create_task(task())
+        return asyncio.create_task(task())
 
 
+@dataclass
 class YoutubeSong(Song):
-    def __init__(self, url: str):
+    url: str
+
+    def create_task(self):
         async def task():
             name = tempdir.touch("")
             cmd = self.make_cmd(name)
             # print(cmd)
-            cmd_dl = [*cmd, url]
+            cmd_dl = [*cmd, self.url]
             # print(cmd_dl)
-            cmd_get_name = [*cmd, "--get-filename", url]
+            cmd_get_name = [*cmd, "--get-filename", self.url]
             dl = asyncio.create_task(
                 asyncio.create_subprocess_exec(
                     *cmd_dl, stdout=subprocess.PIPE, stderr=subprocess.PIPE
@@ -162,7 +173,7 @@ class YoutubeSong(Song):
             # print(stdout, stderr)
             return file_name.decode("ascii")
 
-        super().__init__(task=task())
+        return asyncio.create_task(task())
 
     @staticmethod
     def make_cmd(filename: Path):

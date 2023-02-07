@@ -58,7 +58,7 @@ class PlaySound(commands.Cog):
                 song = DiscordMessageSong(ctx.message)
             else:
                 song = self.get_song(url)
-            await player.add(song)
+            player.add(song)
             self.players[guild.id] = player
         except AudioSourceNotFoundError:
             await ctx.send("ないよ")
@@ -110,7 +110,7 @@ if __name__ == "__main__":
 
     intents = discord.Intents.all()
 
-    class Mybot(commands.Bot):
+    class MyBot(commands.Bot):
         async def on_ready(self) -> None:
             print("ready")
 
@@ -118,5 +118,5 @@ if __name__ == "__main__":
             await self.load_extension(file.stem)
             await self.tree.sync()
 
-    bot = Mybot("t!", intents=intents)
+    bot = MyBot("t!", intents=intents)
     bot.run(token, root_logger=True, log_level=logging.INFO)
