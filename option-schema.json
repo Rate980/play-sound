@@ -1,0 +1,39 @@
+{
+    "type": "object",
+    "properties": {
+        "[0-9]+": {
+            "type": "object",
+            "properties": {
+                "prefix": {
+                    "type": "string",
+                    "nullable": true
+                },
+                "dj_id": {
+                    "type": "integer",
+                    "nullable": true
+                },
+                "blacklist": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "announcesongs": {
+                    "type": "bool",
+                    "default": false
+                },
+                "preventduplicates": {
+                    "type": "bool",
+                    "default": false
+                },
+                "maxqueuelength": {
+                    "type": "integer"
+                },
+                "displaylists": {
+                    "type": "bool",
+                    "default": false
+                }
+            }
+        }
+    }
+}

@@ -6,11 +6,14 @@ from pathlib import Path
 import discord
 from discord.ext import commands, tasks
 
+import checks
 from errors import AudioSourceNotFoundError, AudioUrlError, UserNotInVoiceChannel
+from jsons import Jsons
 from player import Player
 from song import DiscordMessageLinkSong, OnlineSong, Song, YoutubeSong, YtDlpSong
 
 PERMISSIONS = 3263552
+json_path = Path(__file__).resolve().parent.joinpath("data.json")
 
 
 class PlaySound(commands.Cog):
@@ -19,8 +22,13 @@ class PlaySound(commands.Cog):
         self.players: dict[int, Player] = dict()
         self.delete_disconnected.start()
 
+    async def cog_load(self):
+        self.data = Jsons(json_path)
+        await self.data.read()
+
     async def cog_unload(self):
         self.delete_disconnected.cancel()
+        await self.data.write()
 
     def get_song(self, url: str, author: discord.Member) -> Song:
         if not re.match(r"https?://[\w!?/+\-_~;.,*&@#$%()'[\]]+", url):
@@ -131,6 +139,7 @@ class PlaySound(commands.Cog):
             return
 
         if (now_play := player.now_play) is None:
+            await ctx.send("empty")
             return
         queue = player.get_queue()
         embed = discord.Embed(
@@ -147,7 +156,7 @@ class PlaySound(commands.Cog):
             value="__Next up:__\n"
             + "\n".join(
                 [
-                    f"`{i + 1}.` [{x}]({x.url})"  # type: ignore
+                    f"`{i + 1}.` [{x}]({x.url}) | `Requested by {x.author}`"  # type: ignore
                     for i, x in enumerate(queue)
                     if hasattr(x, "url")
                 ]
@@ -179,6 +188,7 @@ class PlaySound(commands.Cog):
 
     @commands.hybrid_command()
     @commands.guild_only()
+    @checks.is_dj
     async def pause(self, ctx: commands.Context):
         guild = typing.cast(discord.Guild, ctx.guild)
         if (player := self.get_player(guild.id)) is None:
@@ -235,6 +245,7 @@ class PlaySound(commands.Cog):
 
     @commands.hybrid_command(aliases=[])
     @commands.guild_only()
+    @checks.is_dj
     async def replay(self, ctx: commands.Context):
         guild = typing.cast(discord.Guild, ctx.guild)
         if (player := self.get_player(guild.id)) is None:
@@ -246,6 +257,7 @@ class PlaySound(commands.Cog):
 
     @commands.hybrid_command(aliases=["pt", "ptop"])
     @commands.guild_only()
+    @checks.is_dj
     async def playtop(self, ctx: commands.Context, url: str):
         guild = typing.cast(discord.Guild, ctx.guild)
         author = typing.cast(discord.Member, ctx.author)
@@ -260,6 +272,7 @@ class PlaySound(commands.Cog):
 
     @commands.hybrid_command(aliases=["ps", "pskip", "playnow", "pn"])
     @commands.guild_only()
+    @checks.is_dj
     async def playskip(self, ctx: commands.Context, url: str):
         await self.playtop(ctx, url=url)
         guild = typing.cast(discord.Guild, ctx.guild)
@@ -291,6 +304,7 @@ class PlaySound(commands.Cog):
 
     @commands.hybrid_command(aliases=["random", "nt"])
     @commands.guild_only()
+    @checks.is_dj
     async def shuffle(self, ctx: commands.Context):
         guild = typing.cast(discord.Guild, ctx.guild)
         if (player := self.get_player(guild.id)) is None:
@@ -301,6 +315,7 @@ class PlaySound(commands.Cog):
 
     @commands.hybrid_command(aliases=["m", "mv"])
     @commands.guild_only()
+    @checks.is_dj
     async def move(self, ctx: commands.Context, origin: int, target: int):
         guild = typing.cast(discord.Guild, ctx.guild)
         if (player := self.get_player(guild.id)) is None:
@@ -316,6 +331,7 @@ class PlaySound(commands.Cog):
 
     @commands.hybrid_command(aliases=["rm"])
     @commands.guild_only()
+    @checks.is_dj
     async def remove(self, ctx: commands.Context, target: int):
         guild = typing.cast(discord.Guild, ctx.guild)
         if (player := self.get_player(guild.id)) is None:
@@ -329,6 +345,7 @@ class PlaySound(commands.Cog):
 
     @commands.hybrid_command(aliases=["rmd", "rd", "drm"])
     @commands.guild_only()
+    @checks.is_dj
     async def removedupes(self, ctx: commands.Context):
         guild = typing.cast(discord.Guild, ctx.guild)
         if (player := self.get_player(guild.id)) is None:
@@ -349,6 +366,7 @@ class PlaySound(commands.Cog):
 
     @commands.hybrid_command(aliases=["st"])
     @commands.guild_only()
+    @checks.is_dj
     async def skipto(self, ctx: commands.Context, target: int):
         guild = typing.cast(discord.Guild, ctx.guild)
         if (player := self.get_player(guild.id)) is None:
@@ -364,10 +382,50 @@ class PlaySound(commands.Cog):
 
         await ctx.send("skipping!")
 
-    @commands.hybrid_group()
+    @commands.hybrid_group(fallback="show")
     @commands.guild_only()
+    @checks.is_mod
     async def settings(self, ctx: commands.Context):
-        pass
+        if ctx.invoked_subcommand is not None:
+            return
+
+        guild = typing.cast(discord.Guild, ctx.guild)
+        opt = self.data.get_option(guild.id)
+        embed = discord.Embed()
+        embed.add_field(name="prefix", value=opt["prefix"])
+
+        async def role_value():
+            if opt["dj_id"] is None:
+                return str(None)
+
+            role = guild.get_role(opt["dj_id"])
+            if role is None:
+                for x in await guild.fetch_roles():
+                    if x.id == opt["dj_id"]:
+                        role = x
+                        break
+                else:
+                    return str(None)
+            return role.name
+
+        def bool_value(x):
+            if x:
+                return "enabled"
+            else:
+                return "disable"
+
+        embed.add_field(name="dj", value=await role_value())
+        bools = {
+            k: bool_value(v)
+            for k, v in opt.items()
+            if k in ["announcesongs", "preventduplicates", "displaylists"]
+        }
+        for k, v in bools.items():
+            embed.add_field(name=k, value=v)
+        max_len = opt["maxqueuelength"]
+        embed.add_field(name="maxqueuelength", value=max_len if max_len > 0 else "None")
+        embed.add_field(name="black list", value="")
+        await ctx.send(embed=embed)
 
     @tasks.loop(hours=1)
     async def delete_disconnected(self):

@@ -8,11 +8,30 @@ token = os.environ["DIS_TEST_TOKEN"]
 intents = discord.Intents.all()
 
 
+# def check(self):
+#     async def inner(ctx: commands.Context):
+#         return bool(self)
+
+#     return commands.check(inner)
+
+
 def check():
     async def inner(ctx: commands.Context):
-        return False
+        print(ctx.cog.id)
+        return True
 
     return commands.check(inner)
+
+
+class TestCog(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.id = 1
+
+    @check()
+    @commands.command()
+    async def test(self, ctx):
+        pass
 
 
 class MyBot(commands.Bot):
@@ -20,7 +39,7 @@ class MyBot(commands.Bot):
         print("ready")
 
     async def setup_hook(self) -> None:
-        await self.tree.sync()
+        await self.add_cog(TestCog(self))
 
 
 bot = MyBot("t!", intents=intents)
