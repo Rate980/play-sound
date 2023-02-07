@@ -1,5 +1,5 @@
 import asyncio
-from collections import abc, deque
+from collections import deque
 from random import shuffle
 from typing import Generic, TypeVar
 
@@ -54,7 +54,7 @@ class Queue(Generic[T]):
         return len(self._queue)
 
     def __iter__(self):
-        iter(self._queue)
+        return iter(self._queue)
 
     def empty(self):
         return not self._queue

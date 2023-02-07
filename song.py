@@ -1,6 +1,8 @@
 import asyncio
+import json
 import mimetypes
 import os
+import sys
 import uuid
 from abc import ABCMeta, abstractmethod
 from asyncio import subprocess
@@ -33,14 +35,15 @@ class TempDir:
 tempdir = TempDir()
 
 
+@dataclass
 class Song(metaclass=ABCMeta):
-    def __init__(self):
-        self.__post_init__()
+    id: str | None = field(default=None, init=False)
+    filename: str | None = field(default=None, init=False)
+    title: str | None = field(default=None, init=False)
 
     @final
     def __post_init__(self):
         self.task = self.create_task()
-        self.filename: str | None = None
 
     async def get_source(self):
         # self.filename = name = await self.task
@@ -58,6 +61,15 @@ class Song(metaclass=ABCMeta):
     @abstractmethod
     def create_task(self) -> asyncio.Task[str]:
         raise NotImplementedError
+
+    def __str__(self):
+        return self.title if self.title is not None else "unknown"
+
+    def __eq__(self, __o: object) -> bool:
+        try:
+            return self.id is not None and __o.id == self.id  # type: ignore
+        except AttributeError:
+            return False
 
 
 @dataclass
@@ -180,10 +192,48 @@ class YoutubeSong(Song):
         return ["youtube-dl", "-f", "bestaudio", "-o", f"{filename}.%(ext)s"]
 
 
+@dataclass
+class YtDlpSong(Song):
+    url: str
+
+    def create_task(self) -> asyncio.Task[str]:
+        async def task():
+            cmd = [
+                "yt-dlp",
+                "-o",
+                rf"{tempdir.tempdir}\%(id)s.%(ext)s",
+                "-j",
+                "--no-simulate",
+                self.url,
+            ]
+
+            res = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            (stdout, stderr) = await res.communicate()
+            if stderr == b"":
+                print(stderr.decode("ascii"), file=sys.stderr)
+
+            json_str = stdout.decode("ascii").splitlines()[0]
+
+            data = json.loads(json_str)
+            id = data["id"]
+            title = data["title"]
+            # print(title)
+            self.id = id
+            self.title = title
+            return str(tempdir.tempdir.joinpath(f'{id}.{data["ext"]}'))
+
+        return asyncio.create_task(task())
+
+    def after(self):
+        pass
+
+
 if __name__ == "__main__":
 
     async def main():
-        a = YoutubeSong("https://soundcloud.com/djgdnkk/tintin")
+        a = YtDlpSong("https://soundcloud.com/djgdnkk/tintin")
         s = await a.get_source()
         print(s)
 

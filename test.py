@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 from discord.ext import commands
@@ -28,19 +27,14 @@ if __name__ == "__main__":
 
     class MyBot(commands.Bot):
         async def on_ready(self):
-            channel = self.get_channel(540816542191845386)
-            if not isinstance(channel, discord.VoiceChannel):
-                channel = await self.fetch_channel(540816542191845386)
-            if not isinstance(channel, discord.VoiceChannel):
+            channel = self.get_channel(596760218755399685)
+            if not isinstance(channel, discord.abc.Messageable):
                 return
 
-            voice = await channel.connect()
-            s = discord.FFmpegPCMAudio(
-                r"C:\Users\2220208\play-sound\cache\ZVSSBUvm62o.m4a"
-            )
-            voice.play(
-                s,
-                after=lambda _: voice.play(s),
+            await channel.send(
+                embed=discord.Embed(
+                    description="[youtube](https://www.youtube.com/watch?v=NzIBCjAfNgU&list=TLPQMDcwMjIwMjOgMWb94cxOCA&index=2)"  # noqa
+                )
             )
 
         async def setup_hook(self):

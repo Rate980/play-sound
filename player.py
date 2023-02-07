@@ -1,12 +1,13 @@
 import asyncio
-from cmath import rect
 from dataclasses import dataclass, field
 
 import discord
 
-from errors import VoiceClientDisconnectedError
+from errors import AudioSourceNotFoundError, VoiceClientDisconnectedError
 from queues import Queue
 from song import Song
+
+TIMEOUT_SEC = 30
 
 
 @dataclass
@@ -14,9 +15,14 @@ class Player:
     queue: Queue[Song] = field(default_factory=Queue, init=False)
     voice_client: discord.VoiceClient
     loop: asyncio.AbstractEventLoop
-    disconnected: bool = field(default=False, init=False)
+    # disconnected: bool = field(default=False, init=False)
     loop_queue: bool = field(default=False, init=False)
     loop_song: bool = field(default=False, init=False)
+    now_play: Song | None = field(default=None, init=False)
+
+    @property
+    def disconnected(self):
+        return not self.voice_client.is_connected()
 
     def __post_init__(self):
         asyncio.run_coroutine_threadsafe(self.play(), self.loop)
@@ -42,17 +48,17 @@ class Player:
         self.check()
         # song = await asyncio.wait_for(self.queue.get(), 1)
         try:
-            song = await asyncio.wait_for(self.queue.get(), 1)
+            song = await asyncio.wait_for(self.queue.get(), TIMEOUT_SEC)
             # song = await self.queue.get()
         except asyncio.TimeoutError:
             await self.disconnect()
             return
+        self.now_play = song
         source = await song.get_source()
 
         def after(_):
             if self.loop_queue:
-
-                return
+                self.queue.put(song)
             asyncio.run_coroutine_threadsafe(self.play(), self.loop)
             song.after()
 
@@ -71,6 +77,9 @@ class Player:
     def add_first(self, song: Song):
         self.queue.put_first(song)
 
+    def is_paused(self):
+        return self.voice_client.is_paused()
+
     def pause(self):
         self.voice_client.pause()
 
@@ -80,4 +89,14 @@ class Player:
     async def disconnect(self) -> None:
         self.check()
         await self.voice_client.disconnect()
-        self.disconnected = True
+
+    def get_queue(self):
+        if self.now_play is None:
+            return []
+        return list(self.queue)
+
+    def replay(self):
+        if self.now_play is None:
+            raise AudioSourceNotFoundError
+        self.add(self.now_play)
+        self.voice_client.stop()
