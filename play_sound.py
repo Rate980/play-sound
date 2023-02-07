@@ -6,12 +6,13 @@ from pathlib import Path
 import discord
 from discord.ext import commands, tasks
 
-from errors import AudioSourceNotFoundError
+from errors import AudioSourceNotFoundError, AudioUrlError, UserNotInVoiceChannel
 from player import Player
 from song import DiscordMessageLinkSong, OnlineSong, Song, YoutubeSong, YtDlpSong
 
+PERMISSIONS = 3263552
 
-# @dataclass
+
 class PlaySound(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot: commands.Bot = bot
@@ -21,62 +22,67 @@ class PlaySound(commands.Cog):
     async def cog_unload(self):
         self.delete_disconnected.cancel()
 
-    def get_song(self, link: str) -> Song:
-        if not re.match(r"https?://[\w!?/+\-_~;.,*&@#$%()'[\]]+", link):
+    def get_song(self, url: str, author: discord.Member) -> Song:
+        if not re.match(r"https?://[\w!?/+\-_~;.,*&@#$%()'[\]]+", url):
             raise AudioSourceNotFoundError
 
-        if re.match(r"https://discord\.com/channels/[0-9]+/[0-9]+/[0-9]+", link):
-            return DiscordMessageLinkSong(link, self.bot)
+        if re.match(r"https://discord\.com/channels/[0-9]+/[0-9]+/[0-9]+", url):
+            return DiscordMessageLinkSong(author, url, self.bot)
 
         if (
             re.match(
                 r"https?://(?:www|music|m)\.(?:youtube\.com|youtu\.be)/(?:watch\?v=|embed)?[a-zA-Z0-9_\-]+",  # noqa
-                link,
+                url,
             )
-            or re.match(r"https?//soundcloud.com/\w+/\w+", link)
-            or re.match(r"https?://youtu.be/[a-zA-Z0-9_\-]+", link)
+            or re.match(r"https?//soundcloud.com/\w+/\w+", url)
+            or re.match(r"https?://youtu.be/[a-zA-Z0-9_\-]+", url)
         ):
-            return YoutubeSong(link)
+            return YoutubeSong(author, url)
 
-        return OnlineSong(link)
+        return OnlineSong(author, url)
+
+    def check_url(self, url: str, author: discord.Member):
+        if not (
+            re.match(
+                r"https?://(?:www|music|m)\.youtube\.com/(?:watch\?v=|embed/|shorts/)[a-zA-Z0-9_\-]+",  # noqa
+                url,
+            )
+            or re.match(r"https?://soundcloud.com/[a-zA-Z0-9_\-]+/[a-zA-Z0-9_\-]+", url)
+            or re.match(r"https?://youtu.be/[a-zA-Z0-9_\-]+", url)
+        ):
+            raise AudioUrlError
+        # if url is None:
+        #     song = DiscordMessageSong(ctx.message)
+        # else:
+        #     # song = self.get_song(url)
+        return YtDlpSong(author, url)
 
     def get_player(self, guild_id: int):
         player = self.players.get(guild_id)
         return player if player is not None and not player.disconnected else None
 
+    async def get_player_or_make(self, guild_id: int, author: discord.Member):
+        if (plyer := self.get_player(guild_id)) is None:
+            try:
+                plyer = Player(await author.voice.channel.connect(), self.bot.loop)  # type: ignore
+                self.players[guild_id] = plyer
+            except AttributeError:
+                raise UserNotInVoiceChannel
+        return plyer
+
     @commands.hybrid_command(aliases=["p"])
     @commands.guild_only()
     async def play(self, ctx: commands.Context, url: str):
         guild = typing.cast(discord.Guild, ctx.guild)
-        if (player := self.get_player(guild.id)) is None:
-            author = typing.cast(discord.Member, ctx.author)
-            if (voice := author.voice) is None or voice.channel is None:
-                await ctx.send("vc入れや")
-                return
-
-            player = Player(await voice.channel.connect(), self.bot.loop)
-            self.players[guild.id] = player
-            if not (
-                re.match(
-                    r"https?://(?:www|music|m)\.youtube\.com/(?:watch\?v=|embed/|shorts/)[a-zA-Z0-9_\-]+",  # noqa
-                    url,
-                )
-                or re.match(
-                    r"https?://soundcloud.com/[a-zA-Z0-9_\-]+/[a-zA-Z0-9_\-]+", url
-                )
-                or re.match(r"https?://youtu.be/[a-zA-Z0-9_\-]+", url)
-            ):
-                await ctx.send("soundcloud or youtube plz")
-                return
+        author = typing.cast(discord.Member, ctx.author)
         try:
-            # if url is None:
-            #     song = DiscordMessageSong(ctx.message)
-            # else:
-            #     # song = self.get_song(url)
-            song = YtDlpSong(url)
+            player = await self.get_player_or_make(guild.id, author)
+            song = self.check_url(url, author)
             player.add(song)
         except AudioSourceNotFoundError:
             await ctx.send("ないよ")
+        except UserNotInVoiceChannel:
+            await ctx.send("VC入れや")
 
     @commands.hybrid_command(aliases=["summon", "fuckon"])
     @commands.guild_only()
@@ -141,7 +147,7 @@ class PlaySound(commands.Cog):
             value="__Next up:__\n"
             + "\n".join(
                 [
-                    f"`{i + 1}.` [{x.title}]({x.url})"  # type: ignore
+                    f"`{i + 1}.` [{x}]({x.url})"  # type: ignore
                     for i, x in enumerate(queue)
                     if hasattr(x, "url")
                 ]
@@ -226,6 +232,142 @@ class PlaySound(commands.Cog):
         else:
             msg += "Disabled!"
         await ctx.send(msg)
+
+    @commands.hybrid_command(aliases=[])
+    @commands.guild_only()
+    async def replay(self, ctx: commands.Context):
+        guild = typing.cast(discord.Guild, ctx.guild)
+        if (player := self.get_player(guild.id)) is None:
+            await ctx.send("おらんで")
+            return
+
+        player.replay()
+        await ctx.send("replay")
+
+    @commands.hybrid_command(aliases=["pt", "ptop"])
+    @commands.guild_only()
+    async def playtop(self, ctx: commands.Context, url: str):
+        guild = typing.cast(discord.Guild, ctx.guild)
+        author = typing.cast(discord.Member, ctx.author)
+        try:
+            player = await self.get_player_or_make(guild.id, author)
+            song = self.check_url(url, author)
+            player.add_first(song)
+        except AudioSourceNotFoundError:
+            await ctx.send("ないよ")
+        except UserNotInVoiceChannel:
+            await ctx.send("VC入れや")
+
+    @commands.hybrid_command(aliases=["ps", "pskip", "playnow", "pn"])
+    @commands.guild_only()
+    async def playskip(self, ctx: commands.Context, url: str):
+        await self.playtop(ctx, url=url)
+        guild = typing.cast(discord.Guild, ctx.guild)
+        if (player := self.get_player(guild.id)) is None:
+            await ctx.send("おらんで")
+            return
+        player.skip()
+
+    @commands.hybrid_command(aliases=["cl"])
+    @commands.guild_only()
+    async def clear(self, ctx: commands.Context):
+        guild = typing.cast(discord.Guild, ctx.guild)
+        if (player := self.get_player(guild.id)) is None:
+            await ctx.send("おらんで")
+            return
+
+        player.clear()
+        await ctx.send("clear")
+
+    @commands.hybrid_command(aliases=["links"])
+    async def invite(self, ctx: commands.Context):
+        if (client_user := self.bot.user) is None:
+            await ctx.send("bot is not running")
+            return
+        await ctx.send(
+            "https://discord.com/api/oauth2/authorize"
+            f"?client_id={client_user.id}&permissions={PERMISSIONS}&scope=bot"
+        )
+
+    @commands.hybrid_command(aliases=["random", "nt"])
+    @commands.guild_only()
+    async def shuffle(self, ctx: commands.Context):
+        guild = typing.cast(discord.Guild, ctx.guild)
+        if (player := self.get_player(guild.id)) is None:
+            await ctx.send("おらんで")
+            return
+        player.shuffle()
+        await ctx.send("shuffling!")
+
+    @commands.hybrid_command(aliases=["m", "mv"])
+    @commands.guild_only()
+    async def move(self, ctx: commands.Context, origin: int, target: int):
+        guild = typing.cast(discord.Guild, ctx.guild)
+        if (player := self.get_player(guild.id)) is None:
+            await ctx.send("おらんで")
+            return
+        try:
+            player.move(origin, target)
+        except IndexError:
+            await ctx.send("位置おかしいぞ")
+            return
+
+        await ctx.send("moving!")
+
+    @commands.hybrid_command(aliases=["rm"])
+    @commands.guild_only()
+    async def remove(self, ctx: commands.Context, target: int):
+        guild = typing.cast(discord.Guild, ctx.guild)
+        if (player := self.get_player(guild.id)) is None:
+            await ctx.send("おらんで")
+            return
+        try:
+            player.remove(target)
+        except IndexError:
+            await ctx.send("位置おかしいぞ")
+            return
+
+    @commands.hybrid_command(aliases=["rmd", "rd", "drm"])
+    @commands.guild_only()
+    async def removedupes(self, ctx: commands.Context):
+        guild = typing.cast(discord.Guild, ctx.guild)
+        if (player := self.get_player(guild.id)) is None:
+            await ctx.send("おらんで")
+            return
+        in_q = []
+        rev_list: list[int] = []
+        for i, x in enumerate(player.get_queue()):
+            if x.id in in_q:
+                rev_list.append(i)
+            else:
+                in_q.append(x.id)
+
+        for x in reversed(rev_list):
+            player.queue.remove_index(x)
+
+        await ctx.send("done")
+
+    @commands.hybrid_command(aliases=["st"])
+    @commands.guild_only()
+    async def skipto(self, ctx: commands.Context, target: int):
+        guild = typing.cast(discord.Guild, ctx.guild)
+        if (player := self.get_player(guild.id)) is None:
+            await ctx.send("おらんで")
+            return
+        if len(player.queue) <= target:
+            await ctx.send("なくなる")
+            return
+        for _ in range(target - 1):
+            await player.queue.get()
+
+        player.skip()
+
+        await ctx.send("skipping!")
+
+    @commands.hybrid_group()
+    @commands.guild_only()
+    async def settings(self, ctx: commands.Context):
+        pass
 
     @tasks.loop(hours=1)
     async def delete_disconnected(self):

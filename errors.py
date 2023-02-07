@@ -8,3 +8,11 @@ class AudioSourceNotFoundError(Exception):
 
 class AudioExtensionError(AudioSourceNotFoundError):
     pass
+
+
+class AudioUrlError(Exception):
+    pass
+
+
+class UserNotInVoiceChannel(Exception):
+    pass

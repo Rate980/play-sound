@@ -40,6 +40,7 @@ class Song(metaclass=ABCMeta):
     id: str | None = field(default=None, init=False)
     filename: str | None = field(default=None, init=False)
     title: str | None = field(default=None, init=False)
+    author: discord.Member
 
     @final
     def __post_init__(self):
@@ -233,7 +234,7 @@ class YtDlpSong(Song):
 if __name__ == "__main__":
 
     async def main():
-        a = YtDlpSong("https://soundcloud.com/djgdnkk/tintin")
+        a = YtDlpSong(None, "https://soundcloud.com/djgdnkk/tintin")  # type: ignore
         s = await a.get_source()
         print(s)
 

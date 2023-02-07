@@ -31,8 +31,9 @@ class Player:
         if self.disconnected:
             raise VoiceClientDisconnectedError
 
-    async def loop_play(self, song: Song):
-        def after(_):
+    def after(self, song: Song):
+        def inner(_):
+            self.now_play = None
             if not self.loop_song:
                 asyncio.run_coroutine_threadsafe(self.play(), self.loop)
                 if self.loop_queue:
@@ -42,7 +43,11 @@ class Player:
                 return
             asyncio.run_coroutine_threadsafe(self.loop_play(song), self.loop)
 
-        self.voice_client.play(await song.get_source(), after=after)
+        return inner
+
+    async def loop_play(self, song: Song):
+        self.now_play = song
+        self.voice_client.play(await song.get_source(), after=self.after(song))
 
     async def play(self):
         self.check()
@@ -56,15 +61,9 @@ class Player:
         self.now_play = song
         source = await song.get_source()
 
-        def after(_):
-            if self.loop_queue:
-                self.queue.put(song)
-            asyncio.run_coroutine_threadsafe(self.play(), self.loop)
-            song.after()
-
         self.voice_client.play(
             source,
-            after=after,
+            after=self.after(song),
         )
 
     def add(self, song: Song):
@@ -98,5 +97,17 @@ class Player:
     def replay(self):
         if self.now_play is None:
             raise AudioSourceNotFoundError
-        self.add(self.now_play)
+        self.add_first(self.now_play)
         self.voice_client.stop()
+
+    def clear(self):
+        self.queue.clear()
+
+    def shuffle(self):
+        self.queue.shuffle()
+
+    def move(self, origin, target):
+        self.queue.move(origin - 1, target - 1)
+
+    def remove(self, target):
+        self.queue.remove_index(target - 1)
