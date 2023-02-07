@@ -188,7 +188,7 @@ class PlaySound(commands.Cog):
 
     @commands.hybrid_command()
     @commands.guild_only()
-    @checks.is_dj
+    @checks.is_dj()
     async def pause(self, ctx: commands.Context):
         guild = typing.cast(discord.Guild, ctx.guild)
         if (player := self.get_player(guild.id)) is None:
@@ -245,7 +245,7 @@ class PlaySound(commands.Cog):
 
     @commands.hybrid_command(aliases=[])
     @commands.guild_only()
-    @checks.is_dj
+    @checks.is_dj()
     async def replay(self, ctx: commands.Context):
         guild = typing.cast(discord.Guild, ctx.guild)
         if (player := self.get_player(guild.id)) is None:
@@ -257,7 +257,7 @@ class PlaySound(commands.Cog):
 
     @commands.hybrid_command(aliases=["pt", "ptop"])
     @commands.guild_only()
-    @checks.is_dj
+    @checks.is_dj()
     async def playtop(self, ctx: commands.Context, url: str):
         guild = typing.cast(discord.Guild, ctx.guild)
         author = typing.cast(discord.Member, ctx.author)
@@ -272,7 +272,7 @@ class PlaySound(commands.Cog):
 
     @commands.hybrid_command(aliases=["ps", "pskip", "playnow", "pn"])
     @commands.guild_only()
-    @checks.is_dj
+    @checks.is_dj()
     async def playskip(self, ctx: commands.Context, url: str):
         await self.playtop(ctx, url=url)
         guild = typing.cast(discord.Guild, ctx.guild)
@@ -304,7 +304,7 @@ class PlaySound(commands.Cog):
 
     @commands.hybrid_command(aliases=["random", "nt"])
     @commands.guild_only()
-    @checks.is_dj
+    @checks.is_dj()
     async def shuffle(self, ctx: commands.Context):
         guild = typing.cast(discord.Guild, ctx.guild)
         if (player := self.get_player(guild.id)) is None:
@@ -315,7 +315,7 @@ class PlaySound(commands.Cog):
 
     @commands.hybrid_command(aliases=["m", "mv"])
     @commands.guild_only()
-    @checks.is_dj
+    @checks.is_dj()
     async def move(self, ctx: commands.Context, origin: int, target: int):
         guild = typing.cast(discord.Guild, ctx.guild)
         if (player := self.get_player(guild.id)) is None:
@@ -331,7 +331,7 @@ class PlaySound(commands.Cog):
 
     @commands.hybrid_command(aliases=["rm"])
     @commands.guild_only()
-    @checks.is_dj
+    @checks.is_dj()
     async def remove(self, ctx: commands.Context, target: int):
         guild = typing.cast(discord.Guild, ctx.guild)
         if (player := self.get_player(guild.id)) is None:
@@ -345,7 +345,7 @@ class PlaySound(commands.Cog):
 
     @commands.hybrid_command(aliases=["rmd", "rd", "drm"])
     @commands.guild_only()
-    @checks.is_dj
+    @checks.is_dj()
     async def removedupes(self, ctx: commands.Context):
         guild = typing.cast(discord.Guild, ctx.guild)
         if (player := self.get_player(guild.id)) is None:
@@ -366,7 +366,7 @@ class PlaySound(commands.Cog):
 
     @commands.hybrid_command(aliases=["st"])
     @commands.guild_only()
-    @checks.is_dj
+    @checks.is_dj()
     async def skipto(self, ctx: commands.Context, target: int):
         guild = typing.cast(discord.Guild, ctx.guild)
         if (player := self.get_player(guild.id)) is None:
@@ -384,7 +384,7 @@ class PlaySound(commands.Cog):
 
     @commands.hybrid_group(fallback="show")
     @commands.guild_only()
-    @checks.is_mod
+    @checks.is_mod()
     async def settings(self, ctx: commands.Context):
         if ctx.invoked_subcommand is not None:
             return
@@ -426,6 +426,31 @@ class PlaySound(commands.Cog):
         embed.add_field(name="maxqueuelength", value=max_len if max_len > 0 else "None")
         embed.add_field(name="black list", value="")
         await ctx.send(embed=embed)
+
+    @commands.hybrid_command(aliases=["lc"])
+    @commands.guild_only()
+    @checks.is_dj()
+    async def leavecleanup(self, ctx: commands.Context):
+        guild = typing.cast(discord.Guild, ctx.guild)
+        if (player := self.get_player(guild.id)) is None:
+            await ctx.send("おらんで")
+            return
+        if ctx.voice_client is None:
+            await ctx.send("おらんで")
+            return
+        channel = ctx.voice_client.channel
+        if not (
+            isinstance(channel, discord.VoiceChannel)
+            or isinstance(channel, discord.StageChannel)
+        ):
+            raise Exception("unknown error")
+
+        members = channel.members
+        for i, x in reversed(list(enumerate(player.get_queue()))):
+            if x.author not in members:
+                player.queue.remove_index(i)
+
+        await ctx.send("cleanup done!")
 
     @tasks.loop(hours=1)
     async def delete_disconnected(self):

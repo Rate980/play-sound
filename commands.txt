@@ -3,7 +3,7 @@
 !forceskip - fskip, fs hd
 !invite - links d
 !join - summon, fuckon d
-!leavecleanup - lc
+!leavecleanup - lc d
 !loop - repeat d
 !qloop - loopqueue, lq, queueloop d
 !move - m, mv d
