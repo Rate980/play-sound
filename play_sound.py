@@ -87,6 +87,10 @@ class PlaySound(commands.Cog):
             player = await self.get_player_or_make(guild.id, author)
             song = self.check_url(url, author)
             player.add(song)
+            if len(player.queue) > 0:
+                await ctx.send("Added to queue")
+            else:
+                await ctx.send("playing")
         except AudioSourceNotFoundError:
             await ctx.send("ないよ")
         except UserNotInVoiceChannel:
@@ -265,6 +269,10 @@ class PlaySound(commands.Cog):
             player = await self.get_player_or_make(guild.id, author)
             song = self.check_url(url, author)
             player.add_first(song)
+            if len(player.queue) > 0:
+                await ctx.send("Added to queue")
+            else:
+                await ctx.send("playing")
         except AudioSourceNotFoundError:
             await ctx.send("ないよ")
         except UserNotInVoiceChannel:
@@ -280,6 +288,7 @@ class PlaySound(commands.Cog):
             await ctx.send("おらんで")
             return
         player.skip()
+        await ctx.send("playing")
 
     @commands.hybrid_command(aliases=["cl"])
     @commands.guild_only()
@@ -339,6 +348,7 @@ class PlaySound(commands.Cog):
             return
         try:
             player.remove(target)
+            await ctx.send("Removed")
         except IndexError:
             await ctx.send("位置おかしいぞ")
             return
